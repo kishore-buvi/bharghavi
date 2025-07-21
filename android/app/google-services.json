@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "589282512583",
+    "project_id": "bharghavi-65459",
+    "storage_bucket": "bharghavi-65459.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:589282512583:android:8ca582930e99379b1d38e2",
+        "android_client_info": {
+          "package_name": "com.example.bharghavi"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAZ0xbtaYVChPecYK3DkymfDOlTamG_1Y8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
