@@ -113,13 +113,21 @@ class _ProductListScreenState extends State<ProductListScreen> {
           children: [
             _buildSearchAndFilter(),
             Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    CarouselWidget(carouselImages: carouselImages),
-                    const SizedBox(height: 20),
-                    if (widget.isAdminMode)
-                      Container(
+              child: CustomScrollView(
+                slivers: [
+                  // Carousel Section
+                  if (carouselImages.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: CarouselWidget(carouselImages: carouselImages),
+                    ),
+
+                  // Spacing
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+                  // Admin Product Form Section
+                  if (widget.isAdminMode)
+                    SliverToBoxAdapter(
+                      child: Container(
                         margin: const EdgeInsets.symmetric(horizontal: 16),
                         decoration: BoxDecoration(
                           color: Colors.white,
@@ -155,14 +163,72 @@ class _ProductListScreenState extends State<ProductListScreen> {
                           imageService: _imageService,
                         ),
                       ),
-                    const SizedBox(height: 20),
-                    if (filteredProducts.isNotEmpty)
-                      _buildProductsGrid(filteredProducts)
-                    else
-                      _buildEmptyState(),
-                    const SizedBox(height: 20),
-                  ],
-                ),
+                    ),
+
+                  // Spacing
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+
+                  // Products Grid or Empty State
+                  if (filteredProducts.isNotEmpty)
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      sliver: SliverGrid(
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          childAspectRatio: 0.65,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        ),
+                        delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                            var product = filteredProducts[index];
+                            return ProductCard(
+                              product: product,
+                              isAdminMode: widget.isAdminMode,
+                              onEdit: widget.isAdminMode
+                                  ? () => _showProductForm(context, product: product)
+                                  : () {},
+                              onDelete: widget.isAdminMode
+                                  ? () async {
+                                try {
+                                  await _productService.deleteProduct(product['id']);
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Product deleted')),
+                                    );
+                                  }
+                                  await _fetchData();
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Error deleting product: ${e.toString()}')),
+                                    );
+                                  }
+                                }
+                              }
+                                  : () {},
+                              onAddToCart: () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('${product['name']} added to cart!'),
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                          childCount: filteredProducts.length,
+                        ),
+                      ),
+                    )
+                  else
+                    SliverFillRemaining(
+                      child: _buildEmptyState(),
+                    ),
+
+                  // Bottom spacing
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                ],
               ),
             ),
           ],
@@ -254,8 +320,11 @@ class _ProductListScreenState extends State<ProductListScreen> {
           return ProductCard(
             product: product,
             isAdminMode: widget.isAdminMode,
-            onEdit: widget.isAdminMode ? () => _showProductForm(context, product: product) : null,
-            onDelete: widget.isAdminMode ? () async {
+            onEdit: widget.isAdminMode
+                ? () => _showProductForm(context, product: product)
+                : () {}, // Provide empty function instead of null
+            onDelete: widget.isAdminMode
+                ? () async {
               try {
                 await _productService.deleteProduct(product['id']);
                 if (mounted) {
@@ -271,7 +340,8 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   );
                 }
               }
-            } : null,
+            }
+                : () {}, // Provide empty function instead of null
             onAddToCart: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -287,9 +357,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(40),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
