@@ -1,69 +1,6 @@
-import 'package:bharghavi/screens/favouritesScreen.dart';
-import 'package:bharghavi/screens/productListScreen.dart';
-import 'package:bharghavi/screens/profileScreen.dart';
 import 'package:flutter/material.dart';
 
-import 'cartScreen.dart';
-
-class RootNavigation extends StatefulWidget {
-  final String categoryId;
-  final String categoryName;
-
-  RootNavigation({required this.categoryId, required this.categoryName});
-
-  @override
-  _RootNavigationState createState() => _RootNavigationState();
-}
-
-class _RootNavigationState extends State<RootNavigation> {
-  int _selectedIndex = 0;
-  late List<Widget> _screens;
-
-  @override
-  void initState() {
-    super.initState();
-    _screens = [
-      ProductListScreen(
-        categoryId: widget.categoryId,
-        categoryName: widget.categoryName,
-        isAdminMode: false, // Adjust based on your app logic
-      ),
-      FavoritesScreen(),
-      ProfileScreen(),
-      CartScreen(),
-    ];
-  }
-
-  void _onNavItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _screens,
-      ),
-      bottomNavigationBar: CurvedBottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onNavItemTapped,
-        icons: [
-          Icons.home,
-          Icons.favorite,
-          Icons.person,
-          Icons.shopping_cart,
-        ],
-        backgroundColor: Color(0xFF2E7D32),
-        selectedColor: Colors.white,
-        unselectedColor: Colors.white,
-      ),
-    );
-  }
-}
-
+// Custom Curved Bottom Navigation Bar
 class CurvedBottomNavigationBar extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
@@ -117,9 +54,9 @@ class CurvedBottomNavigationBar extends StatelessWidget {
                             duration: Duration(milliseconds: 300),
                             curve: Curves.easeInOut,
                             transform: Matrix4.translationValues(
-                              0,
-                              isSelected ? -20 : 0,
-                              0,
+                                0,
+                                isSelected ? -20 : 0,
+                                0
                             ),
                             child: Container(
                               width: 50,
@@ -127,15 +64,13 @@ class CurvedBottomNavigationBar extends StatelessWidget {
                               decoration: BoxDecoration(
                                 color: isSelected ? selectedColor : Colors.transparent,
                                 shape: BoxShape.circle,
-                                boxShadow: isSelected
-                                    ? [
+                                boxShadow: isSelected ? [
                                   BoxShadow(
                                     color: selectedColor.withOpacity(0.3),
                                     blurRadius: 8,
                                     offset: Offset(0, 4),
                                   ),
-                                ]
-                                    : null,
+                                ] : null,
                               ),
                               child: Icon(
                                 icon,
@@ -200,24 +135,18 @@ class BottomNavPainter extends CustomPainter {
 
     // Create the upward curve
     path.quadraticBezierTo(
-      selectedItemCenter - 20,
-      0,
-      selectedItemCenter - 20,
-      20,
+      selectedItemCenter - 20, 0,
+      selectedItemCenter - 20, 20,
     );
 
     path.quadraticBezierTo(
-      selectedItemCenter,
-      30,
-      selectedItemCenter + 20,
-      20,
+      selectedItemCenter, 30,
+      selectedItemCenter + 20, 20,
     );
 
     path.quadraticBezierTo(
-      selectedItemCenter + 20,
-      0,
-      curveEnd,
-      0,
+      selectedItemCenter + 20, 0,
+      curveEnd, 0,
     );
 
     // Line to top right
@@ -235,12 +164,13 @@ class BottomNavPainter extends CustomPainter {
     // Draw shadow
     canvas.drawShadow(path, Colors.black.withOpacity(0.2), 10, false);
 
-    // Draw the main shape
+    // Draw the main shap
     canvas.drawPath(path, paint);
   }
 
   @override
   bool shouldRepaint(covariant BottomNavPainter oldDelegate) {
-    return oldDelegate.currentIndex != currentIndex || oldDelegate.backgroundColor != backgroundColor;
+    return oldDelegate.currentIndex != currentIndex ||
+        oldDelegate.backgroundColor != backgroundColor;
   }
 }
