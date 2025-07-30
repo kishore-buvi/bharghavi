@@ -74,51 +74,54 @@ throw Exception('Failed to upload image');
 }
 }
 
-Future<void> addProduct(String categoryId, Map<String, dynamic> data, File? image) async {
-try {
-String imageUrl = image != null ? await _uploadImage(image) : '';
-await _firestore.collection('products').add({
-'basicInfo': {
-'name': data['name'],
-'description': data['description'] ?? '',
-},
-'pricing': {'price': double.parse(data['price'])},
-'media': {'featuredImage': imageUrl},
-'categorization': {'category': categoryId},
-'inventory': {'quantity': int.parse(data['quantity'])},
-'discount': {'percentage': double.parse(data['discount'])},
-'status': {'isActive': true},
-'createdAt': FieldValue.serverTimestamp(),
-'updatedAt': FieldValue.serverTimestamp(),
-});
-} catch (e) {
-print('Error adding product: $e');
-throw Exception('Failed to add product');
-}
-}
+  Future<void> addProduct(String categoryId, Map<String, dynamic> data, File? image) async {
+    try {
+      String imageUrl = image != null ? await _uploadImage(image) : '';
+      final now = DateTime.now();
 
-Future<void> updateProduct(String productId, Map<String, dynamic> data, File? image) async {
-try {
-String imageUrl = image != null
-? await _uploadImage(image)
-    : (await _firestore.collection('products').doc(productId).get()).data()?['media']['featuredImage'] ?? '';
-await _firestore.collection('products').doc(productId).update({
-'basicInfo': {
-'name': data['name'],
-'description': data['description'] ?? '',
-},
-'pricing': {'price': double.parse(data['price'])},
-'media': {'featuredImage': imageUrl},
-'categorization': {'category': data['categoryId'] ?? (await _firestore.collection('products').doc(productId).get()).data()?['categorization']['category']},
-'inventory': {'quantity': int.parse(data['quantity'])},
-'discount': {'percentage': double.parse(data['discount'])},
-'updatedAt': FieldValue.serverTimestamp(),
-});
-} catch (e) {
-print('Error updating product: $e');
-throw Exception('Failed to update product');
-}
-}
+      await _firestore.collection('products').add({
+        'basicInfo': {
+          'name': data['name'],
+          'description': data['description'] ?? '',
+        },
+        'pricing': {'price': double.parse(data['price'])},
+        'media': {'featuredImage': imageUrl},
+        'categorization': {'category': categoryId},
+        'inventory': {'quantity': int.parse(data['quantity'])},
+        'discount': {'percentage': double.parse(data['discount'])},
+        'status': {'isActive': true},
+        'createdAt': now, // Use DateTime.now()
+        'updatedAt': now, // Use DateTime.now()
+      });
+    } catch (e) {
+      print('Error adding product: $e');
+      throw Exception('Failed to add product');
+    }
+  }
+
+  Future<void> updateProduct(String productId, Map<String, dynamic> data, File? image) async {
+    try {
+      String imageUrl = image != null
+          ? await _uploadImage(image)
+          : (await _firestore.collection('products').doc(productId).get()).data()?['media']['featuredImage'] ?? '';
+
+      await _firestore.collection('products').doc(productId).update({
+        'basicInfo': {
+          'name': data['name'],
+          'description': data['description'] ?? '',
+        },
+        'pricing': {'price': double.parse(data['price'])},
+        'media': {'featuredImage': imageUrl},
+        'categorization': {'category': data['categoryId'] ?? (await _firestore.collection('products').doc(productId).get()).data()?['categorization']['category']},
+        'inventory': {'quantity': int.parse(data['quantity'])},
+        'discount': {'percentage': double.parse(data['discount'])},
+        'updatedAt': DateTime.now(), // Use DateTime.now()
+      });
+    } catch (e) {
+      print('Error updating product: $e');
+      throw Exception('Failed to update product');
+    }
+  }
 
 Future<void> deleteProduct(String productId) async {
 try {
