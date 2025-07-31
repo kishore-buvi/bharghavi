@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'authWrapper.dart';
 import 'firebase_options.dart';
-import 'package:bharghavi/screens/getStartPage.dart';
 
 
 void main() async {
@@ -17,7 +17,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: GetStartPage(),
+      home: AuthWrapper(), // Use AuthWrapper instead of GetStartPage
     );
   }
 }

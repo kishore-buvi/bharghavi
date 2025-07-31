@@ -1,18 +1,18 @@
-// File: lib/screens/auth/loginScreen.dart
 import 'dart:async';
 
+import 'package:bharghavi/screens/profile/homeProfileScreen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:bharghavi/screens/category/categoryScreen.dart';
 
-class LoginScreen extends StatefulWidget {
+class LogInScreen extends StatefulWidget {
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  _LogInScreenState createState() => _LogInScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LogInScreenState extends State<LogInScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -42,13 +42,11 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Format phone number for Firebase
       String formattedPhone = '+91$phoneNumber';
 
       await _auth.verifyPhoneNumber(
         phoneNumber: formattedPhone,
         verificationCompleted: (PhoneAuthCredential credential) async {
-          // Auto-verification (Android only)
           await _signInWithCredential(credential, phoneNumber);
         },
         verificationFailed: (FirebaseAuthException e) {
@@ -71,9 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           );
         },
-        codeAutoRetrievalTimeout: (String verificationId) {
-          // Handle timeout
-        },
+        codeAutoRetrievalTimeout: (String verificationId) {},
         timeout: Duration(seconds: 60),
       );
     } catch (e) {
@@ -89,71 +85,127 @@ class _LoginScreenState extends State<LoginScreen> {
       UserCredential userCredential = await _auth.signInWithCredential(credential);
       if (userCredential.user != null) {
         await _saveUserToFirestore(userCredential.user!, phoneNumber);
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => CategoryScreen()),
-        );
+        await _checkProfileAndNavigate(userCredential.user!);
       }
     } catch (e) {
       _showSnackBar('Sign in failed: ${e.toString()}');
     }
   }
 
+  Future<void> _checkProfileAndNavigate(User user) async {
+    try {
+      DocumentSnapshot doc = await _firestore.collection('users').doc(user.uid).get();
+
+      if (doc.exists) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        bool profileCompleted = data['accountInfo']?['profileCompleted'] ?? false;
+
+        if (profileCompleted) {
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => CategoryScreen()),
+                  (route) => false,
+            );
+          }
+        } else {
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => HomeProfileScreen()),
+                  (route) => false,
+            );
+          }
+        }
+      } else {
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => HomeProfileScreen()),
+                (route) => false,
+          );
+        }
+      }
+    } catch (e) {
+      print('Error checking profile status: $e');
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => HomeProfileScreen()),
+              (route) => false,
+        );
+      }
+    }
+  }
+
   Future<void> _saveUserToFirestore(User user, String phoneNumber) async {
     try {
-      await _firestore.collection('users').doc(user.uid).set({
-        'personalInfo': {
-          'phone': '+91$phoneNumber',
-          'firstName': '',
-          'lastName': '',
-          'email': '',
-          'dateOfBirth': null,
-          'gender': '',
-          'profileImage': '',
-        },
-        'accountInfo': {
-          'createdAt': FieldValue.serverTimestamp(),
-          'lastLogin': FieldValue.serverTimestamp(),
-          'isActive': true,
-          'isVerified': true,
-          'role': 'customer',
-          'provider': 'phone',
-          'lastPasswordChange': null,
-        },
-        'preferences': {
-          'currency': 'INR',
-          'language': 'en',
-          'notifications': {
-            'email': true,
-            'sms': true,
-            'push': true,
+      final userDocRef = _firestore.collection('users').doc(user.uid);
+      final existingDoc = await userDocRef.get();
+
+      if (existingDoc.exists) {
+        await userDocRef.update({
+          'accountInfo.lastLogin': FieldValue.serverTimestamp(),
+        });
+        print('Existing user: updated lastLogin');
+      } else {
+        await userDocRef.set({
+          'uid': user.uid,
+          'personalInfo': {
+            'phone': '+91$phoneNumber',
+            'firstName': '',
+            'lastName': '',
+            'email': '',
+            'dateOfBirth': null,
+            'gender': '',
+            'profileImage': '',
           },
-          'theme': 'light',
-          'marketingConsent': false,
-          'gdprConsent': {
-            'accepted': false,
-            'acceptedAt': null,
-            'ipAddress': '',
+          'accountInfo': {
+            'createdAt': FieldValue.serverTimestamp(),
+            'lastLogin': FieldValue.serverTimestamp(),
+            'isActive': true,
+            'isVerified': true,
+            'role': 'customer',
+            'provider': 'phone',
+            'lastPasswordChange': null,
+            'profileCompleted': false,
           },
-        },
-        'stats': {
-          'totalOrders': 0,
-          'totalSpent': 0.0,
-          'loyaltyPoints': 0,
-          'lifetimeValue': 0.0,
-          'averageOrderValue': 0.0,
-          'lastOrderDate': null,
-        },
-        'activity': {
-          'recentlyViewed': [],
-          'searchHistory': [],
-          'lastActivity': FieldValue.serverTimestamp(),
-        },
-        'addresses': {
-          'shipping': [],
-          'billing': {},
-        },
-      }, SetOptions(merge: true));
+          'preferences': {
+            'currency': 'INR',
+            'language': 'en',
+            'notifications': {
+              'email': true,
+              'sms': true,
+              'push': true,
+            },
+            'theme': 'light',
+            'marketingConsent': false,
+            'gdprConsent': {
+              'accepted': false,
+              'acceptedAt': null,
+              'ipAddress': '',
+            },
+          },
+          'stats': {
+            'totalOrders': 0,
+            'totalSpent': 0.0,
+            'loyaltyPoints': 0,
+            'lifetimeValue': 0.0,
+            'averageOrderValue': 0.0,
+            'lastOrderDate': null,
+          },
+          'activity': {
+            'recentlyViewed': [],
+            'searchHistory': [],
+            'lastActivity': FieldValue.serverTimestamp(),
+          },
+          'addresses': {
+            'shipping': [],
+            'billing': {},
+          },
+        });
+        print('New user: created document');
+      }
     } catch (e) {
       print('Error saving user to Firestore: $e');
     }
@@ -188,14 +240,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: IntrinsicHeight(
                   child: Column(
                     children: [
-                      // Header with logo and title
                       Flexible(
                         child: Container(
                           padding: EdgeInsets.all(20),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // Logo and brand name
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -226,9 +276,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ],
                               ),
                               SizedBox(height: 30),
-                              // Product image placeholder
                               Container(
-                                height: 180, // Reduced from 200
+                                height: 180,
                                 child: Image.asset(
                                   'assets/images/products_display.png',
                                   fit: BoxFit.contain,
@@ -292,8 +341,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                       ),
-
-                      // Bottom section with form
                       Expanded(
                         child: Container(
                           width: double.infinity,
@@ -310,8 +357,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                SizedBox(height: 20), // Reduced from 30
-                                // Phone number input
+                                SizedBox(height: 20),
                                 Container(
                                   decoration: BoxDecoration(
                                     color: Color(0xFFF5F5F5),
@@ -348,10 +394,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                   ),
                                 ),
-
                                 SizedBox(height: 30),
-
-                                // Continue button
                                 Container(
                                   height: 55,
                                   child: ElevatedButton(
@@ -378,10 +421,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                   ),
                                 ),
-
                                 SizedBox(height: 20),
-
-                                // Terms and privacy text
                                 Padding(
                                   padding: EdgeInsets.symmetric(horizontal: 10),
                                   child: Text.rich(
@@ -412,7 +452,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     textAlign: TextAlign.center,
                                   ),
                                 ),
-                                SizedBox(height: 20), // Add some bottom padding
+                                SizedBox(height: 20),
                               ],
                             ),
                           ),
@@ -509,12 +549,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       UserCredential userCredential = await _auth.signInWithCredential(credential);
 
       if (userCredential.user != null) {
-        await _saveUserToFirestore(userCredential.user!);
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => CategoryScreen()),
-              (route) => false,
-        );
+        await _checkProfileAndNavigate(userCredential.user!);
       }
     } catch (e) {
       setState(() {
@@ -525,63 +560,49 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     }
   }
 
-  Future<void> _saveUserToFirestore(User user) async {
+  Future<void> _checkProfileAndNavigate(User user) async {
     try {
-      await _firestore.collection('users').doc(user.uid).set({
-        'personalInfo': {
-          'phone': '+91${widget.phoneNumber}',
-          'firstName': '',
-          'lastName': '',
-          'email': '',
-          'dateOfBirth': null,
-          'gender': '',
-          'profileImage': '',
-        },
-        'accountInfo': {
-          'createdAt': FieldValue.serverTimestamp(),
-          'lastLogin': FieldValue.serverTimestamp(),
-          'isActive': true,
-          'isVerified': true,
-          'role': 'customer',
-          'provider': 'phone',
-          'lastPasswordChange': null,
-        },
-        'preferences': {
-          'currency': 'INR',
-          'language': 'en',
-          'notifications': {
-            'email': true,
-            'sms': true,
-            'push': true,
-          },
-          'theme': 'light',
-          'marketingConsent': false,
-          'gdprConsent': {
-            'accepted': false,
-            'acceptedAt': null,
-            'ipAddress': '',
-          },
-        },
-        'stats': {
-          'totalOrders': 0,
-          'totalSpent': 0.0,
-          'loyaltyPoints': 0,
-          'lifetimeValue': 0.0,
-          'averageOrderValue': 0.0,
-          'lastOrderDate': null,
-        },
-        'activity': {
-          'recentlyViewed': [],
-          'searchHistory': [],
-          'lastActivity': FieldValue.serverTimestamp(),
-        },
-        'addresses': {
-          'shipping': [],
-          'billing': {},
-        },
-      }, SetOptions(merge: true));
+      DocumentSnapshot doc = await _firestore.collection('users').doc(user.uid).get();
+
+      if (doc.exists) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        bool profileCompleted = data['accountInfo']?['profileCompleted'] ?? false;
+
+        if (profileCompleted) {
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => CategoryScreen()),
+                  (route) => false,
+            );
+          }
+        } else {
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => HomeProfileScreen()),
+                  (route) => false,
+            );
+          }
+        }
+      } else {
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => HomeProfileScreen()),
+                (route) => false,
+          );
+        }
+      }
     } catch (e) {
-      print('Error saving user to Firestore: $e');
+      print('Error checking profile status: $e');
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => HomeProfileScreen()),
+              (route) => false,
+        );
+      }
     }
   }
 
@@ -652,7 +673,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               child: IntrinsicHeight(
                 child: Column(
                   children: [
-                    // Illustration
                     Flexible(
                       flex: 2,
                       child: Container(
@@ -704,8 +724,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                         ),
                       ),
                     ),
-
-                    // Bottom section
                     Expanded(
                       flex: 3,
                       child: Container(
@@ -740,10 +758,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                                   color: Colors.black,
                                 ),
                               ),
-
                               SizedBox(height: 40),
-
-                              // OTP input boxes
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                 children: List.generate(6, (index) {
@@ -780,9 +795,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                                         } else if (value.isEmpty && index > 0) {
                                           _focusNodes[index - 1].requestFocus();
                                         }
-
                                         if (index == 5 && value.isNotEmpty) {
-                                          // Auto verify when last digit is entered
                                           _verifyOTP();
                                         }
                                       },
@@ -790,10 +803,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                                   );
                                 }),
                               ),
-
                               SizedBox(height: 30),
-
-                              // Resend OTP
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -819,10 +829,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                                   ),
                                 ],
                               ),
-
                               SizedBox(height: 40),
-
-                              // Verify button
                               Container(
                                 width: double.infinity,
                                 height: 55,
@@ -850,7 +857,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                                   ),
                                 ),
                               ),
-                              SizedBox(height: 20), // Bottom padding
+                              SizedBox(height: 20),
                             ],
                           ),
                         ),
