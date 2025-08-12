@@ -7,6 +7,7 @@ import '../../auth/login/logInScreen.dart';
 
 
 
+import '../policies/contactUsScreen.dart';
 import '../policies/privacyPolicyScreen.dart';
 import '../policies/termsAndConditionsScreen.dart';
 
@@ -378,9 +379,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       icon: Icons.help_outline,
                       title: 'Contact us',
                       onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Contact us screen to be implemented'),
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ContactUsScreen(),
                           ),
                         );
                       },

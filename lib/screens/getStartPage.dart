@@ -67,29 +67,29 @@ class GetStartPage extends StatelessWidget {
                   ),
                 ),
                 // Add Admin Login Button
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red[700], // Distinct color for admin
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      padding: EdgeInsets.symmetric(horizontal: 40, vertical: 12),
-                    ),
-                    onPressed: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => AdminLoginScreen()));
-                    },
-                    child: Text(
-                      "Admin Login",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
+                // Padding(
+                //   padding: const EdgeInsets.only(bottom: 20),
+                //   child: ElevatedButton(
+                //     style: ElevatedButton.styleFrom(
+                //       backgroundColor: Colors.red[700], // Distinct color for admin
+                //       shape: RoundedRectangleBorder(
+                //         borderRadius: BorderRadius.circular(30),
+                //       ),
+                //       padding: EdgeInsets.symmetric(horizontal: 40, vertical: 12),
+                //     ),
+                //     onPressed: () {
+                //       Navigator.push(context, MaterialPageRoute(builder: (context) => AdminLoginScreen()));
+                //     },
+                //     child: Text(
+                //       "Admin Login",
+                //       style: TextStyle(
+                //         color: Colors.white,
+                //         fontSize: 16,
+                //         fontWeight: FontWeight.w600,
+                //       ),
+                //     ),
+                //   ),
+                // ),
               ],
             ),
           ),
