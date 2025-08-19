@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../ProductDetailScreen/ProductDetailScreen.dart';
+
 class ProductCard extends StatefulWidget {
   final Map<String, dynamic>? product;
   final bool isAdminMode;
@@ -483,20 +485,30 @@ class _ProductCardState extends State<ProductCard> {
     final productImage = _getProductImage();
     final isInStock = _isProductInStock();
 
-    return Container(
-      width: 167,
-      height: 187,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(11),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
-          )
-        ],
-      ),
+    return GestureDetector(
+        onTap: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ProductDetailScreen(product: widget.product!),
+        ),
+      );
+    },
+    child: Container(
+    width: 167,
+    height: 187,
+    decoration: BoxDecoration(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(11),
+    boxShadow: [
+    BoxShadow(
+    color: Colors.black.withOpacity(0.05),
+    blurRadius: 6,
+    offset: const Offset(0, 2),
+    )
+    ],
+    ),
+
       child: Stack(
         children: [
           // Product Image
@@ -837,6 +849,6 @@ class _ProductCardState extends State<ProductCard> {
             ),
         ],
       ),
-    );
+    ));
   }
 }
