@@ -4,9 +4,9 @@ import 'package:bharghavi/screens/productList/productService.dart';
 import 'package:bharghavi/screens/productList/imageService.dart';
 import 'package:bharghavi/screens/productList/carouselWidget.dart';
 import 'package:flutter/material.dart';
-import 'package:carousel_slider/carousel_slider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ProductListScreen extends StatefulWidget {
   final String categoryId;
@@ -56,9 +56,12 @@ class _ProductListScreenState extends State<ProductListScreen> {
   Future<void> _fetchData() async {
     setState(() => _isLoading = true);
     try {
-      products = (await _productService.fetchProducts(widget.categoryId))?.map((product) => product ?? {}).toList() ?? [];
-      carouselImages = (await _productService.fetchCarouselImages())?.map((image) => image ?? {}).toList() ?? [];
-      categories = (await _productService.fetchCategories())?.map((category) => category ?? {}).toList() ?? [];
+      products = await _productService.fetchProducts(widget.categoryId) ?? [];
+      carouselImages = await _productService.fetchCarouselImages();
+      categories = await _productService.fetchCategories() ?? [];
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -89,7 +92,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
         filteredProducts.sort((a, b) => (b['pricing']?['price'] ?? 0).compareTo(a['pricing']?['price'] ?? 0));
         break;
       case 'In Stock':
-        filteredProducts = filteredProducts.where((p) => (p['quantity'] ?? 0) > 0).toList();
+        filteredProducts = filteredProducts.where((p) => (p['inventory']?['quantity'] ?? 0) > 0).toList();
         break;
     }
 
@@ -131,10 +134,13 @@ class _ProductListScreenState extends State<ProductListScreen> {
             Expanded(
               child: CustomScrollView(
                 slivers: [
-                  if (carouselImages.isNotEmpty)
-                    SliverToBoxAdapter(
+                  // Carousel section using CarouselWidget
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
                       child: CarouselWidget(carouselImages: carouselImages),
                     ),
+                  ),
                   const SliverToBoxAdapter(child: SizedBox(height: 20)),
                   if (widget.isAdminMode && _isAdmin)
                     SliverToBoxAdapter(
@@ -296,17 +302,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
                 ),
               ],
             ),
-            child: PopupMenuButton<String>(
-              icon: const Icon(Icons.menu, color: Colors.black87, size: 20),
-              onSelected: (value) => setState(() => _filterOption = value),
-              itemBuilder: (BuildContext context) => [
-                const PopupMenuItem(value: 'All', child: Text('All Products')),
-                const PopupMenuItem(value: 'Price: Low to High', child: Text('Price: Low to High')),
-                const PopupMenuItem(value: 'Price: High to Low', child: Text('Price: High to Low')),
-                const PopupMenuItem(value: 'In Stock', child: Text('In Stock Only')),
-              ],
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              elevation: 4,
+            child: IconButton(
+              icon: const Icon(Icons.tune, color: Colors.white, size: 20),
+              onPressed: _showFilterDialog,
+              padding: EdgeInsets.zero,
             ),
           ),
         ],
@@ -315,32 +314,46 @@ class _ProductListScreenState extends State<ProductListScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Padding(
-      padding: const EdgeInsets.all(40),
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey[400]),
+          Icon(
+            Icons.inventory_2_outlined,
+            size: 100,
+            color: Colors.grey.shade400,
+          ),
           const SizedBox(height: 16),
           Text(
+            'No products found',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
             _searchQuery != null && _searchQuery!.isNotEmpty
-                ? 'No products found for "$_searchQuery"'
-                : 'No products available in this category',
-            style: TextStyle(fontSize: 16, color: Colors.grey[600], fontWeight: FontWeight.w500),
+                ? 'Try adjusting your search criteria'
+                : 'No products available in this category yet',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey.shade500,
+            ),
             textAlign: TextAlign.center,
           ),
-          if (_searchQuery != null && _searchQuery!.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () {
-                _searchController.clear();
-                setState(() => _searchQuery = '');
-              },
+          if (widget.isAdminMode && _isAdmin) ...[
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () => _showProductForm(context),
+              icon: const Icon(Icons.add),
+              label: const Text('Add First Product'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2E7D32),
+                backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
-              child: const Text('Clear Search'),
             ),
           ],
         ],
@@ -348,52 +361,106 @@ class _ProductListScreenState extends State<ProductListScreen> {
     );
   }
 
+  void _showFilterDialog() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Filter Products',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20),
+              ...['All', 'Price: Low to High', 'Price: High to Low', 'In Stock'].map(
+                    (option) => RadioListTile<String>(
+                  title: Text(option),
+                  value: option,
+                  groupValue: _filterOption,
+                  onChanged: (value) {
+                    setState(() => _filterOption = value);
+                    Navigator.pop(context);
+                  },
+                  activeColor: Colors.green,
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _showProductForm(BuildContext context, {Map<String, dynamic>? product}) {
-    if (!_isAdmin) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You must be an admin to add or edit products')),
-      );
-      return;
-    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) => SingleChildScrollView(
-        child: Container(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 16),
-          child: ProductForm(
-            product: product,
-            categories: categories,
-            onSubmit: (data, image, productId, categoryId) async {
-              try {
-                if (FirebaseAuth.instance.currentUser == null) {
-                  throw Exception('Please sign in to add products');
-                }
-                await (productId != null
-                    ? _productService.updateProduct(productId, data, image)
-                    : _productService.addProduct(widget.categoryId, data, image));
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(productId != null ? 'Product updated' : 'Product added')),
-                  );
-                }
-                Navigator.pop(context);
-                await _fetchData();
-              } catch (e) {
-                if (mounted) {
-                  String errorMessage = e.toString().contains('firebase_storage/unauthorized')
-                      ? 'You do not have permission to add products. Please sign in as an admin.'
-                      : 'Error: ${e.toString()}';
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(errorMessage)),
-                  );
-                }
-              }
-            },
-            imageService: _imageService,
-          ),
-        ),
-      ),
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.9,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: SingleChildScrollView(
+                controller: scrollController,
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom,
+                    left: 16,
+                    right: 16,
+                    top: 20,
+                  ),
+                  child: ProductForm(
+                    categories: categories,
+                    product: product,
+                    onSubmit: (data, image, productId, categoryId) async {
+                      try {
+                        if (FirebaseAuth.instance.currentUser == null) {
+                          throw Exception('Please sign in to add products');
+                        }
+                        await (productId != null
+                            ? _productService.updateProduct(productId, data, image)
+                            : _productService.addProduct(widget.categoryId, data, image));
+                        if (mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(productId != null ? 'Product updated' : 'Product added')),
+                          );
+                        }
+                        await _fetchData();
+                      } catch (e) {
+                        if (mounted) {
+                          String errorMessage = e.toString().contains('firebase_storage/unauthorized')
+                              ? 'You do not have permission to add products. Please sign in as an admin.'
+                              : 'Error: ${e.toString()}';
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(errorMessage)),
+                          );
+                        }
+                      }
+                    },
+                    imageService: _imageService,
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

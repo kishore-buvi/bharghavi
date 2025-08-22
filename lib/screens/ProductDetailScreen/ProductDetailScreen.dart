@@ -1,6 +1,8 @@
+import 'package:bharghavi/razorPay/service/paymentService.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:bharghavi/screens/profile/addressSelectionScreen.dart'; // Added import for AddressSelectionScreen
 
 class ProductDetailScreen extends StatefulWidget {
   final Map<String, dynamic> product;
@@ -15,9 +17,10 @@ class ProductDetailScreen extends StatefulWidget {
 }
 
 class _ProductDetailScreenState extends State<ProductDetailScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, PaymentMixin {
   bool _isExpanded = false;
   bool _isLoading = false;
+  bool _isPaymentLoading = false;
   String? _currentUserId;
   int _cartQuantity = 1;
   late AnimationController _animationController;
@@ -36,6 +39,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       parent: _animationController,
       curve: Curves.easeInOut,
     );
+
+    // Debug product data on init
+    _debugProductData();
   }
 
   @override
@@ -43,45 +49,221 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     _animationController.dispose();
     super.dispose();
   }
+
   String _getProductId() {
-    return widget.product['id'] ??
-        widget.product['productId'] ??
-        widget.product['_id'] ??
-        'unknown_${DateTime.now().millisecondsSinceEpoch}';
+    return widget.product['id'] ?? 'unknown_${DateTime.now().millisecondsSinceEpoch}';
   }
+
   void _navigateToCart() {
     Navigator.pushNamed(context, '/cart');
   }
+
   void _debugProductData() {
     print('=== Product Debug Info ===');
     print('Full product data: ${widget.product}');
-    print('Product ID: ${widget.product['id']}');
+    print('Product ID: ${_getProductId()}');
     print('Product Name: ${_getProductName()}');
     print('Product Price: ${_getProductPrice()}');
+    print('Product Image: ${_getProductImage()}');
+    print('Discount Percentage: ${_getDiscountPercentage()}');
+    print('Product Size: ${_getProductSize()}');
+    print('Details: ${widget.product['details']}');
     print('Current User ID: $_currentUserId');
+    print('====================');
+  }
+
+  void showPaymentSuccess(String paymentId) {
+    _showMessage('Payment successful! Payment ID: $paymentId');
+  }
+
+  void showPaymentError(String error) {
+    _showMessage('Payment failed: $error', isError: true);
+  }
+
+  Future<Map<String, dynamic>?> _getDefaultAddress() async {
+    if (_currentUserId == null) return null;
+
+    try {
+      DocumentSnapshot doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUserId)
+          .get();
+
+      if (doc.exists) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        List<dynamic> shippingAddresses = data['addresses']?['shipping'] ?? [];
+        final defaultAddress = shippingAddresses.firstWhere(
+              (addr) => addr['isDefault'] == true,
+          orElse: () => null,
+        );
+        return defaultAddress;
+      }
+      return null;
+    } catch (e) {
+      print('Error fetching default address: $e');
+      _showMessage('Error fetching address: $e', isError: true);
+      return null;
+    }
+  }
+
+  void _placeOrder() async {
+    Map<String, dynamic>? selectedAddress = await _getDefaultAddress();
+
+    if (selectedAddress == null) {
+      // No default address found, prompt user to select or add one
+      selectedAddress = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const AddressSelectionScreen(),
+        ),
+      );
+
+      if (selectedAddress == null) {
+        _showMessage('Please select a shipping address to proceed.', isError: true);
+        return;
+      }
+    }
+
+    final double price = _getProductPrice();
+    final double subtotal = price * _cartQuantity;
+    final double gst = subtotal * 0.18;
+    final double discount = subtotal * (_getDiscountPercentage() / 100);
+    final double deliveryFee = 60.0;
+    final double total = (subtotal + gst + deliveryFee) - discount;
+
+    print('=== Payment Debug Info ===');
+    print('Product Price: $price');
+    print('Cart Quantity: $_cartQuantity');
+    print('Subtotal: $subtotal');
+    print('GST: $gst');
+    print('Discount: $discount');
+    print('Delivery Fee: $deliveryFee');
+    print('Final Total: $total');
+    print('Selected Address: $selectedAddress');
     print('========================');
+
+    if (total <= 0) {
+      _showMessage('Invalid amount calculated. Please try again.', isError: true);
+      return;
+    }
+
+    startPayment(
+      amount: total,
+      productName: _getProductName(),
+      description: 'Purchase of ${_getProductName()}',
+      onPaymentStart: () {
+        setState(() {
+          _isPaymentLoading = true;
+        });
+      },
+      onPaymentSuccess: (paymentId) {
+        _processPayment(paymentId, selectedAddress);
+      },
+      onPaymentError: (error) {
+        showPaymentError(error);
+      },
+      onPaymentComplete: () {
+        setState(() {
+          _isPaymentLoading = false;
+        });
+      },
+    );
+  }
+
+  Future<void> _processPayment(String paymentId, Map<String, dynamic>? shippingAddress) async {
+    try {
+      final double price = _getProductPrice();
+      final double subtotal = price * _cartQuantity;
+      final double gst = subtotal * 0.18;
+      final double discount = subtotal * (_getDiscountPercentage() / 100);
+      final double deliveryFee = 60.0;
+      final double total = (subtotal + gst + deliveryFee) - discount;
+
+      // Save order to Firestore with detailed structure
+      await FirebaseFirestore.instance.collection('orders').add({
+        'customer': {
+          'userId': _currentUserId,
+          'email': FirebaseAuth.instance.currentUser?.email ?? '',
+          'firstName': '',
+          'lastName': '',
+          'phone': '',
+        },
+        'orderInfo': {
+          'orderNumber': 'ORD_${DateTime.now().millisecondsSinceEpoch}',
+          'status': 'pending',
+          'paymentStatus': 'paid',
+          'fulfillmentStatus': 'unfulfilled',
+          'currency': 'INR',
+          'notes': '',
+          'internalNotes': '',
+          'priority': 'medium',
+        },
+        'items': {
+          'products': [
+            {
+              'productId': _getProductId(),
+              'variantId': '',
+              'name': _getProductName(),
+              'image': _getProductImage(),
+              'price': price,
+              'quantity': _cartQuantity,
+              'sku': widget.product['sku'] ?? '',
+              'weight': widget.product['details']?['weight'] ?? 0.0,
+              'vendorId': widget.product['vendor']?['vendorId'] ?? '',
+              'total': price * _cartQuantity,
+            }
+          ],
+        },
+        'pricing': {
+          'subtotal': subtotal,
+          'tax': gst,
+          'shipping': deliveryFee,
+          'discount': discount,
+          'total': total,
+          'breakdown': {
+            'itemsTotal': subtotal,
+            'shippingTotal': deliveryFee,
+            'taxTotal': gst,
+            'discountTotal': discount,
+            'handlingFee': 0.0,
+          },
+        },
+        'addresses': {
+          'shipping': shippingAddress ?? {},
+          'billing': shippingAddress ?? {},
+        },
+        'payment': {
+          'method': 'razorpay',
+          'transactionId': paymentId,
+          'gateway': 'razorpay',
+          'gatewayResponse': {},
+          'installments': 1,
+          'cardLastFour': '',
+        },
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      print('Order saved to Firestore successfully');
+      _handlePaymentSuccess(paymentId);
+    } catch (e) {
+      print('Error saving order: $e');
+      showPaymentError('Failed to save order: $e');
+    }
   }
 
   // Helper methods to extract product data
   String _getProductName() {
-    return widget.product['basicInfo']?['name'] ??
-        widget.product['name'] ??
-        'Cold Pressed Virgin Groundnut oil';
+    return widget.product['basicInfo']?['name'] ?? widget.product['name'] ?? 'Unnamed Product';
   }
 
   String _getProductImage() {
-    return widget.product['media']?['featuredImage'] ??
-        widget.product['image'] ??
-        'https://via.placeholder.com/200x200';
+    return widget.product['media']?['featuredImage'] ?? widget.product['image'] ?? 'https://via.placeholder.com/200x200';
   }
 
   double _getProductPrice() {
-    if (widget.product['pricing']?['price'] != null) {
-      return (widget.product['pricing']['price'] as num).toDouble();
-    } else if (widget.product['price'] != null) {
-      return (widget.product['price'] as num).toDouble();
-    }
-    return 298.0;
+    return (widget.product['pricing']?['price'] as num?)?.toDouble() ??
+        (widget.product['price'] as num?)?.toDouble() ?? 0.0;
   }
 
   double _getDiscountPercentage() {
@@ -91,21 +273,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     } else if (discountRaw is num) {
       return discountRaw.toDouble();
     }
-    return 10.0;
+    return 0.0;
   }
 
   String _getProductSize() {
-    return widget.product['basicInfo']?['size'] ??
-        widget.product['size'] ??
-        '1 litre';
-  }
-
-  double _getRating() {
-    return widget.product['rating']?['average']?.toDouble() ?? 4.5;
+    return widget.product['details']?['size'] ?? widget.product['size'] ?? 'Not specified';
   }
 
   Future<void> _addToCart() async {
-    _debugProductData();
     if (_currentUserId == null) {
       _showMessage('Please sign in to add items to cart', isError: true);
       return;
@@ -122,7 +297,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
       final now = DateTime.now();
 
       final productData = {
-        'productId': widget.product['id'] ?? widget.product['productId'] ?? 'unknown',
+        'productId': _getProductId(),
         'variantId': '',
         'quantity': _cartQuantity,
         'price': _getProductPrice(),
@@ -161,7 +336,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     final cartData = cartDoc.data() as Map<String, dynamic>;
 
     List<dynamic> items = [];
-    if (cartData['items'] != null && cartData['items']['products'] != null) {
+    if (cartData['items']?['products'] != null) {
       items = List.from(cartData['items']['products']);
     } else if (cartData['products'] != null) {
       items = List.from(cartData['products']);
@@ -170,7 +345,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     }
 
     final existingIndex = items.indexWhere(
-            (item) => item['productId'] == widget.product['id']);
+            (item) => item['productId'] == _getProductId());
 
     if (existingIndex != -1) {
       items[existingIndex]['quantity'] =
@@ -248,39 +423,170 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     });
   }
 
+  void _showBillSummary() {
+    final double price = _getProductPrice();
+    final double subtotal = price * _cartQuantity;
+    final double gst = subtotal * 0.18;
+    final double discount = subtotal * (_getDiscountPercentage() / 100);
+    final double deliveryFee = 60.0;
+    final double total = (subtotal + gst + deliveryFee) - discount;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.6,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
+        child: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Bill Summary',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  children: [
+                    _buildBillRow('Item Total & GST', '₹${(subtotal + gst).toStringAsFixed(1)}'),
+                    const SizedBox(height: 15),
+                    _buildBillRow('Discount', '₹${discount.toStringAsFixed(1)}', isDiscount: true),
+                    const SizedBox(height: 15),
+                    _buildBillRow('Delivery Fee', '₹${deliveryFee.toStringAsFixed(1)}'),
+                    const SizedBox(height: 15),
+                    const Divider(),
+                    _buildBillRow('Total Cost', '₹${total.toStringAsFixed(1)}', isTotal: true),
+                    const SizedBox(height: 30),
+                    const Text(
+                      'By placing an order you agree to our',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const Text(
+                      'Terms And Conditions',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blue,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: _isPaymentLoading ? null : () {
+                          Navigator.pop(context);
+                          _placeOrder();
+                        },
+                        child: _isPaymentLoading
+                            ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                          ),
+                        )
+                            : const Text(
+                          'Place Order',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBillRow(String label, String value, {bool isDiscount = false, bool isTotal = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: isTotal ? 16 : 14,
+            fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+            color: Colors.grey[600],
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: isTotal ? 16 : 14,
+            fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+            color: isTotal ? Colors.black : Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final screenWidth = screenSize.width;
     final screenHeight = screenSize.height;
 
-    // Calculate responsive dimensions based on screen size
     final isSmallScreen = screenWidth < 375;
     final isTablet = screenWidth > 600;
 
-    // Design ratio calculations (based on your 402x630 design)
     final designWidth = 402.0;
     final designHeight = 630.0;
 
-    // Scale factors
     final widthRatio = screenWidth / designWidth;
     final heightRatio = screenHeight / designHeight;
     final minRatio = widthRatio < heightRatio ? widthRatio : heightRatio;
 
-    // Responsive dimensions
     final imageSize = (231 * minRatio).clamp(150.0, 280.0);
     final topSectionHeight = (244 * minRatio).clamp(200.0, 350.0);
     final bottomRadius = (50 * minRatio).clamp(25.0, 50.0);
-
-    // Image overlay positioning
-    final imageOverlapHeight = imageSize * 0.3; // Amount of image that overlaps bottom sheet
 
     final productName = _getProductName();
     final productPrice = _getProductPrice();
     final discountPercentage = _getDiscountPercentage();
     final productImage = _getProductImage();
     final productSize = _getProductSize();
-    final rating = _getRating();
 
     return Scaffold(
       body: Container(
@@ -288,12 +594,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         height: screenHeight,
         color: const Color(0xFF4A7C59),
         child: SafeArea(
-          child: Stack(
+          child: Column(
             children: [
-              // Top section with green background
+              // Top section with green background and image
               Container(
                 width: screenWidth,
-                height: topSectionHeight - imageOverlapHeight,
+                height: topSectionHeight,
+                color: const Color(0xFF4A7C59),
                 child: Stack(
                   children: [
                     // Back button
@@ -317,17 +624,60 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                         ),
                       ),
                     ),
+                    // Centered product image
+                    Center(
+                      child: Container(
+                        width: imageSize,
+                        height: imageSize,
+                        margin: EdgeInsets.only(top: 20.0),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white,
+                            width: 8,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: ClipOval(
+                          child: Image.network(
+                            productImage,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Center(
+                                child: CircularProgressIndicator(
+                                  value: loadingProgress.expectedTotalBytes != null
+                                      ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                      : null,
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: Colors.grey[100],
+                              child: Icon(
+                                Icons.image,
+                                size: imageSize * 0.4,
+                                color: Colors.grey[400],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-
               // Bottom section with product details
-              Positioned(
-                top: topSectionHeight - imageOverlapHeight,
-                left: 0,
-                right: 0,
-                bottom: 0,
+              Expanded(
                 child: Container(
+                  width: screenWidth,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.only(
@@ -335,171 +685,154 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
                       topRight: Radius.circular(bottomRadius),
                     ),
                   ),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return SingleChildScrollView(
-                        padding: EdgeInsets.fromLTRB(
-                          isTablet ? 32 : (isSmallScreen ? 16 : 24),
-                          imageOverlapHeight + (isSmallScreen ? 16 : 24),
-                          isTablet ? 32 : (isSmallScreen ? 16 : 24),
-                          isTablet ? 32 : (isSmallScreen ? 16 : 24),
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      isTablet ? 32 : (isSmallScreen ? 16 : 24),
+                      20.0,
+                      isTablet ? 32 : (isSmallScreen ? 16 : 24),
+                      isTablet ? 32 : (isSmallScreen ? 16 : 24),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Product name and size
+                        Text(
+                          productName,
+                          style: TextStyle(
+                            fontSize: isTablet ? 28 : (isSmallScreen ? 20 : 24),
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        SizedBox(height: isSmallScreen ? 4 : 8),
+                        Text(
+                          productSize,
+                          style: TextStyle(
+                            fontSize: isTablet ? 18 : (isSmallScreen ? 14 : 16),
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        SizedBox(height: isSmallScreen ? 8 : 12),
+
+                        // Price section
+                        Row(
                           children: [
-                            // Product name and size
+                            if (discountPercentage > 0)
+                              Text(
+                                '₹${(productPrice / (1 - discountPercentage / 100)).toInt()}',
+                                style: TextStyle(
+                                  fontSize: isTablet ? 22 : (isSmallScreen ? 18 : 20),
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[500],
+                                  decoration: TextDecoration.lineThrough,
+                                ),
+                              ),
+                            if (discountPercentage > 0) const SizedBox(width: 12),
                             Text(
-                              productName,
+                              '₹${productPrice.toInt()}',
                               style: TextStyle(
-                                fontSize: isTablet ? 28 : (isSmallScreen ? 20 : 24),
+                                fontSize: isTablet ? 22 : (isSmallScreen ? 18 : 20),
                                 fontWeight: FontWeight.bold,
                                 color: Colors.black87,
                               ),
                             ),
-                            SizedBox(height: isSmallScreen ? 4 : 8),
-                            Text(
-                              productSize,
-                              style: TextStyle(
-                                fontSize: isTablet ? 18 : (isSmallScreen ? 14 : 16),
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            SizedBox(height: isSmallScreen ? 8 : 12),
-
-                            // Rating
-                            Row(
-                              children: [
-                                Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: isSmallScreen ? 6 : 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF4A7C59),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.star,
-                                        color: Colors.white,
-                                        size: isSmallScreen ? 12 : 14,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        rating.toString(),
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: isSmallScreen ? 10 : 12,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                            if (discountPercentage > 0) const SizedBox(width: 12),
+                            if (discountPercentage > 0)
+                              Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: isSmallScreen ? 6 : 8,
+                                  vertical: 2,
                                 ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Rating',
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF4A7C59),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '${discountPercentage.toInt()}% Offer',
                                   style: TextStyle(
+                                    color: Colors.white,
                                     fontSize: isSmallScreen ? 10 : 12,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: isSmallScreen ? 12 : 16),
-
-                            // Price section
-                            Row(
-                              children: [
-                                Text(
-                                  '₹${productPrice.toInt()}',
-                                  style: TextStyle(
-                                    fontSize: isTablet ? 22 : (isSmallScreen ? 18 : 20),
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.grey[500],
-                                    decoration: TextDecoration.lineThrough,
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: isSmallScreen ? 6 : 8,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF4A7C59),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    '${discountPercentage.toInt()}% Offer',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: isSmallScreen ? 10 : 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: isSmallScreen ? 16 : 24),
-
-                            // Features row
-                            _buildFeaturesSection(isTablet, isSmallScreen),
-                            SizedBox(height: isSmallScreen ? 16 : 24),
-
-                            // Action buttons
-                            _buildActionButtons(isTablet, isSmallScreen),
-                            SizedBox(height: isSmallScreen ? 16 : 24),
-
-                            // Product details expandable section with table format
-                            _buildExpandableDetails(isTablet, isSmallScreen),
-
-                            // Extra bottom padding
-                            const SizedBox(height: 20),
+                              ),
                           ],
                         ),
-                      );
-                    },
-                  ),
-                ),
-              ),
+                        SizedBox(height: isSmallScreen ? 16 : 24),
 
-              // Product image positioned to overlay the bottom sheet
-              Positioned(
-                top: topSectionHeight - imageOverlapHeight - (imageSize / 2),
-                left: (screenWidth - imageSize) / 2,
-                child: Container(
-                  width: imageSize,
-                  height: imageSize,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white,
-                      width: 8,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  child: ClipOval(
-                    child: Image.network(
-                      productImage,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        color: Colors.grey[100],
-                        child: Icon(
-                          Icons.image,
-                          size: imageSize * 0.4,
-                          color: Colors.grey[400],
+                        // Quantity selector
+                        Row(
+                          children: [
+                            GestureDetector(
+                              onTap: () {
+                                if (_cartQuantity > 1) {
+                                  setState(() => _cartQuantity--);
+                                }
+                              },
+                              child: Container(
+                                width: isSmallScreen ? 30 : 40,
+                                height: isSmallScreen ? 30 : 40,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.remove,
+                                  size: isSmallScreen ? 16 : 20,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ),
+                            Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 10),
+                              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey[300]!),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '$_cartQuantity',
+                                style: TextStyle(
+                                  fontSize: isSmallScreen ? 14 : 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () {
+                                setState(() => _cartQuantity++);
+                              },
+                              child: Container(
+                                width: isSmallScreen ? 30 : 40,
+                                height: isSmallScreen ? 30 : 40,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.add,
+                                  size: isSmallScreen ? 16 : 20,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
+                        SizedBox(height: isSmallScreen ? 16 : 24),
+
+                        // Features row
+                        _buildFeaturesSection(isTablet, isSmallScreen),
+                        SizedBox(height: isSmallScreen ? 16 : 24),
+
+                        // Action buttons
+                        _buildActionButtons(isTablet, isSmallScreen),
+                        SizedBox(height: isSmallScreen ? 16 : 24),
+
+                        // Product details expandable section
+                        _buildExpandableDetails(isTablet, isSmallScreen),
+
+                        const SizedBox(height: 20),
+                      ],
                     ),
                   ),
                 ),
@@ -528,7 +861,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
     return GestureDetector(
       onTap: () {
-        // Add functionality for each feature button
         if (icon == Icons.local_shipping_outlined) {
           _showMessage('Fast delivery: Get your order within 24 hours!');
         } else if (icon == Icons.eco_outlined) {
@@ -574,7 +906,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
 
     return Column(
       children: [
-        // Add to cart button
         SizedBox(
           width: double.infinity,
           height: buttonHeight,
@@ -608,15 +939,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
           ),
         ),
         SizedBox(height: isSmallScreen ? 8 : 12),
-        // Buy now button
         SizedBox(
           width: double.infinity,
           height: buttonHeight,
           child: ElevatedButton(
-            onPressed: () {
-              _showMessage('Proceeding to checkout...');
-              // Add actual buy now functionality here
-            },
+            onPressed: _showBillSummary,
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF4A7C59),
               foregroundColor: Colors.white,
@@ -640,7 +967,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
   }
 
   Widget _buildExpandableDetails(bool isTablet, bool isSmallScreen) {
+    final description = widget.product['basicInfo']?['description'] ?? widget.product['description'] ?? 'No description available';
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GestureDetector(
           onTap: _toggleExpanded,
@@ -687,18 +1016,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
               border: Border.all(color: Colors.grey[300]!),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Table(
-              columnWidths: {
-                0: FlexColumnWidth(1),
-                1: FlexColumnWidth(2),
-              },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildTableRow('Product Name:', 'Pure Cold Pressed Coconut Oil', isTablet, isSmallScreen, isFirst: true),
-                _buildTableRow('Brand:', 'Bhargavi Oil Store', isTablet, isSmallScreen),
-                _buildTableRow('Ingredients:', '100% Natural Coconut Oil', isTablet, isSmallScreen),
-                _buildTableRow('Shelf life:', '24 months', isTablet, isSmallScreen),
-                _buildTableRow('Packaging:', '1000ml - PET', isTablet, isSmallScreen),
-                _buildTableRow('Usage:', 'For cooking', isTablet, isSmallScreen, isLast: true),
+                Table(
+                  columnWidths: const {
+                    0: FlexColumnWidth(1.5),
+                    1: FlexColumnWidth(2.5),
+                  },
+                  border: TableBorder(
+                    horizontalInside: BorderSide(color: Colors.grey[300]!, width: 0.5),
+                    verticalInside: BorderSide.none,
+                  ),
+                  children: [
+                    _buildTableRow('Product Name:', _getProductName(), isTablet, isSmallScreen, isFirst: true),
+                    _buildTableRow('Description:', description, isTablet, isSmallScreen),
+                    _buildTableRow('Brand:', widget.product['details']?['brand'] ?? 'Not specified', isTablet, isSmallScreen),
+                    _buildTableRow('Ingredients:', widget.product['details']?['ingredients'] ?? 'Not specified', isTablet, isSmallScreen),
+                    _buildTableRow('Shelf Life:', widget.product['details']?['shelfLife'] ?? 'Not specified', isTablet, isSmallScreen),
+                    _buildTableRow('Packaging:', widget.product['details']?['packaging'] ?? 'Not specified', isTablet, isSmallScreen),
+                    _buildTableRow('Usage:', widget.product['details']?['type'] ?? 'Not specified', isTablet, isSmallScreen, isLast: true),
+                  ],
+                ),
               ],
             ),
           ),
@@ -707,14 +1046,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
     );
   }
 
-  TableRow _buildTableRow(String label, String value, bool isTablet, bool isSmallScreen, {bool isFirst = false, bool isLast = false}) {
+  TableRow _buildTableRow(String label, String value, bool isTablet, bool isSmallScreen,
+      {bool isFirst = false, bool isLast = false}) {
     return TableRow(
       decoration: BoxDecoration(
         border: Border(
-          bottom: isLast ? BorderSide.none : BorderSide(
-            color: Colors.grey[300]!,
-            width: 0.5,
-          ),
+          top: isFirst ? BorderSide.none : BorderSide(color: Colors.grey[300]!, width: 0.5),
+          bottom: isLast ? BorderSide.none : BorderSide(color: Colors.grey[300]!, width: 0.5),
         ),
       ),
       children: [
@@ -723,15 +1061,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
             vertical: isSmallScreen ? 12 : 16,
             horizontal: isSmallScreen ? 12 : 16,
           ),
-          decoration: BoxDecoration(
-            color: Colors.grey[50],
-            border: Border(
-              right: BorderSide(
-                color: Colors.grey[300]!,
-                width: 0.5,
-              ),
-            ),
-          ),
+          color: Colors.grey[50],
           child: Text(
             label,
             style: TextStyle(
@@ -757,5 +1087,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen>
         ),
       ],
     );
+  }
+
+  void _handlePaymentSuccess(String paymentId) {
+    showPaymentSuccess(paymentId);
+
+    // Navigate to order success screen
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        Navigator.pushNamed(context, '/order-success', arguments: paymentId);
+      }
+    });
   }
 }

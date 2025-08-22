@@ -45,7 +45,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
               ParagraphText('We may collect and process the following types of information:'),
               BulletText('Personal Information: Name, email address, phone number, mailing address, and other contact details.'),
               BulletText('Usage Data: IP address, device information, browser type, operating system, and app usage statistics.'),
-              BulletText('Location Data: If permitted, we may collect your geographic location for relevant services.'),
+              BulletText('Location Data: If permitted, we may collect your geographic location for relevant service.'),
               BulletText('Transaction Information: If applicable, payment details for orders.'),
               BulletText('Third-Party Information: Data obtained from third-party integrations or linked accounts.'),
 

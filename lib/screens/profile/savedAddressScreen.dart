@@ -1,63 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-// Address Model
-class Address {
-  final String id;
-  final String type;
-  final String street;
-  final String apartment;
-  final String city;
-  final String state;
-  final String zipCode;
-  final String country;
-  final String? landmark;
-  final bool isDefault;
-
-  Address({
-    required this.id,
-    required this.type,
-    required this.street,
-    this.apartment = '',
-    required this.city,
-    required this.state,
-    required this.zipCode,
-    required this.country,
-    this.landmark,
-    this.isDefault = false,
-  });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'type': type,
-      'street': street,
-      'apartment': apartment,
-      'city': city,
-      'state': state,
-      'zipCode': zipCode,
-      'country': country,
-      'landmark': landmark,
-      'isDefault': isDefault,
-    };
-  }
-
-  factory Address.fromMap(Map<String, dynamic> map) {
-    return Address(
-      id: map['id'] ?? '',
-      type: map['type'] ?? 'home',
-      street: map['street'] ?? '',
-      apartment: map['apartment'] ?? '',
-      city: map['city'] ?? '',
-      state: map['state'] ?? '',
-      zipCode: map['zipCode'] ?? '',
-      country: map['country'] ?? '',
-      landmark: map['landmark'],
-      isDefault: map['isDefault'] ?? false,
-    );
-  }
-}
+import 'address.dart';
 
 // Main Saved Address Screen
 class SavedAddressScreen extends StatefulWidget {
@@ -393,7 +337,7 @@ class _SavedAddressScreenState extends State<SavedAddressScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) { // Fixed Context to BuildContext
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -716,19 +660,21 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
             filled: true,
             fillColor: Colors.grey[50],
           ),
-          validator: required ? (value) {
+          validator: required
+              ? (value) {
             if (value == null || value.trim().isEmpty) {
               return 'Please enter $label';
             }
             return null;
-          } : null,
+          }
+              : null,
         ),
       ],
     );
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) { // Fixed Context to BuildContext
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -864,13 +810,13 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
 
                       const SizedBox(height: 20),
 
-
                       _buildTextField(
                         controller: _zipCodeController,
                         label: 'Pin Code?',
                         hint: 'Enter pin code',
                         keyboardType: TextInputType.number,
                       ),
+
                       const SizedBox(height: 20),
 
                       _buildTextField(
@@ -878,6 +824,7 @@ class _AddEditAddressScreenState extends State<AddEditAddressScreen> {
                         label: 'State',
                         hint: 'Enter state',
                       ),
+
                       const SizedBox(height: 20),
 
                       _buildTextField(

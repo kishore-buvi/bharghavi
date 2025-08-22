@@ -1,7 +1,7 @@
 import 'package:bharghavi/auth/login/logInScreen.dart';
 import 'package:bharghavi/screens/category/categoryScreen.dart';
-import 'package:bharghavi/screens/loginScreen.dart';
-import 'package:bharghavi/admin/adminLoginScreen.dart'; // Import the AdminLoginScreen
+
+
 import 'package:flutter/material.dart';
 
 class GetStartPage extends StatelessWidget {

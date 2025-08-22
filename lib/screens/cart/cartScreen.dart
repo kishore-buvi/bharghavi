@@ -22,9 +22,7 @@ class _CartScreenState extends State<CartScreen> {
   @override
   void initState() {
     super.initState();
-    _listenToCartChanges(); // Use real-time listener
-
-    // Backup: Also refresh when widget is built
+    _listenToCartChanges();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _fetchCartData();
@@ -35,7 +33,6 @@ class _CartScreenState extends State<CartScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Refresh cart data when screen becomes active
     _fetchCartData();
   }
 
@@ -45,7 +42,6 @@ class _CartScreenState extends State<CartScreen> {
     super.dispose();
   }
 
-  // Real-time listener for cart changes
   void _listenToCartChanges() {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
@@ -83,7 +79,6 @@ class _CartScreenState extends State<CartScreen> {
         }
       });
     } else {
-      // No user signed in
       setState(() {
         cartItems = [];
         _cartTotal = 0.0;
@@ -94,7 +89,6 @@ class _CartScreenState extends State<CartScreen> {
     }
   }
 
-  // Manual refresh method (backup)
   Future<void> _fetchCartData() async {
     if (!mounted) return;
 
@@ -129,11 +123,9 @@ class _CartScreenState extends State<CartScreen> {
         final items = cartData['items']?['products'] as List<dynamic>? ?? [];
 
         cartItems = items.map((item) => Map<String, dynamic>.from(item)).toList();
-
-        // Calculate totals
         _cartTotal = _calculateSubtotal();
-        _gst = _cartTotal * 0.18; // 18% GST
-        _discount = _cartTotal * 0.10; // 10% discount as shown in UI
+        _gst = _cartTotal * 0.18;
+        _discount = _cartTotal * 0.10;
       } else {
         cartItems = [];
         _cartTotal = 0.0;
@@ -159,7 +151,6 @@ class _CartScreenState extends State<CartScreen> {
     return (_cartTotal + _gst + _deliveryFee) - _discount;
   }
 
-  // Manual refresh method for pull-to-refresh or refresh button
   void _onRefresh() {
     _fetchCartData();
   }
@@ -177,7 +168,6 @@ class _CartScreenState extends State<CartScreen> {
       return;
     }
 
-    // Optimistic UI update
     setState(() {
       cartItems[index]['quantity'] = newQuantity;
       _cartTotal = _calculateSubtotal();
@@ -209,7 +199,6 @@ class _CartScreenState extends State<CartScreen> {
         }
       }
     } catch (e) {
-      // Rollback optimistic update if needed
       setState(() {
         cartItems[index]['quantity'] = oldQuantity;
         _cartTotal = _calculateSubtotal();
@@ -234,7 +223,6 @@ class _CartScreenState extends State<CartScreen> {
 
     final removedItem = cartItems[index];
 
-    // Optimistically update UI
     setState(() {
       cartItems.removeAt(index);
       _cartTotal = _calculateSubtotal();
@@ -264,7 +252,6 @@ class _CartScreenState extends State<CartScreen> {
           });
         }
 
-        // Final UI sync (important if all items removed)
         if (mounted) {
           setState(() {
             _cartTotal = _calculateSubtotal();
@@ -281,7 +268,6 @@ class _CartScreenState extends State<CartScreen> {
         }
       }
     } catch (e) {
-      // Rollback if failed
       setState(() {
         cartItems.insert(index, removedItem);
         _cartTotal = _calculateSubtotal();
@@ -316,7 +302,6 @@ class _CartScreenState extends State<CartScreen> {
         ),
         child: Column(
           children: [
-            // Handle bar
             Container(
               margin: const EdgeInsets.symmetric(vertical: 10),
               width: 40,
@@ -326,8 +311,6 @@ class _CartScreenState extends State<CartScreen> {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-
-            // Header
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               child: Row(
@@ -347,10 +330,7 @@ class _CartScreenState extends State<CartScreen> {
                 ],
               ),
             ),
-
             const Divider(),
-
-            // Bill details
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -365,9 +345,7 @@ class _CartScreenState extends State<CartScreen> {
                     const Divider(),
                     _buildBillRow('Total Cost', '₹${_calculateFinalTotal().toStringAsFixed(1)}',
                         isTotal: true),
-
                     const SizedBox(height: 30),
-
                     const Text(
                       'By placing an order you agree to our',
                       style: TextStyle(fontSize: 12, color: Colors.grey),
@@ -380,10 +358,7 @@ class _CartScreenState extends State<CartScreen> {
                         decoration: TextDecoration.underline,
                       ),
                     ),
-
                     const SizedBox(height: 20),
-
-                    // Place Order Button
                     SizedBox(
                       width: double.infinity,
                       height: 50,
@@ -443,7 +418,6 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   void _placeOrder() {
-    // Implement order placement logic
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Order placed successfully!'),
@@ -487,7 +461,6 @@ class _CartScreenState extends State<CartScreen> {
             ? const Center(child: CircularProgressIndicator(color: Colors.white))
             : Column(
           children: [
-            // Cart Items List
             Expanded(
               child: Container(
                 margin: const EdgeInsets.only(top: 20),
@@ -524,7 +497,6 @@ class _CartScreenState extends State<CartScreen> {
                             ),
                             child: Row(
                               children: [
-                                // Product Image
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(10),
                                   child: Image.network(
@@ -541,10 +513,7 @@ class _CartScreenState extends State<CartScreen> {
                                         ),
                                   ),
                                 ),
-
                                 const SizedBox(width: 15),
-
-                                // Product Details
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -557,8 +526,6 @@ class _CartScreenState extends State<CartScreen> {
                                         ),
                                       ),
                                       const SizedBox(height: 10),
-
-                                      // Quantity Controls
                                       Row(
                                         children: [
                                           GestureDetector(
@@ -577,7 +544,6 @@ class _CartScreenState extends State<CartScreen> {
                                               ),
                                             ),
                                           ),
-
                                           Container(
                                             margin: const EdgeInsets.symmetric(horizontal: 10),
                                             padding: const EdgeInsets.symmetric(
@@ -593,7 +559,6 @@ class _CartScreenState extends State<CartScreen> {
                                               ),
                                             ),
                                           ),
-
                                           GestureDetector(
                                             onTap: () => _updateQuantity(index, 1),
                                             child: Container(
@@ -615,8 +580,6 @@ class _CartScreenState extends State<CartScreen> {
                                     ],
                                   ),
                                 ),
-
-                                // Price
                                 Text(
                                   '₹${item['price']?.toString() ?? '0'}',
                                   style: const TextStyle(
@@ -630,8 +593,6 @@ class _CartScreenState extends State<CartScreen> {
                         },
                       ),
                     ),
-
-                    // Missing Item Section (if needed)
                     Container(
                       margin: const EdgeInsets.symmetric(horizontal: 20),
                       padding: const EdgeInsets.all(15),
@@ -668,14 +629,11 @@ class _CartScreenState extends State<CartScreen> {
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 20),
                   ],
                 ),
               ),
             ),
-
-            // Generate Bill Button
             if (cartItems.isNotEmpty)
               Container(
                 padding: const EdgeInsets.all(20),

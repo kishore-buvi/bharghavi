@@ -2,7 +2,6 @@
     package="com.example.bharghavi">
 
     <uses-permission android:name="android.permission.INTERNET"/>
-
     <!-- For Android 12 and below -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
@@ -20,6 +19,7 @@
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true">
 
+        <!-- Main Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -40,6 +40,14 @@
             </intent-filter>
         </activity>
 
+        <!-- Razorpay Activity -->
+        <activity
+            android:name="com.razorpay.RzpActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:exported="false">
+        </activity>
+
+        <!-- Flutter Embedding -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

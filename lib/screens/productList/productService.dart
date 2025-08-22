@@ -1,132 +1,493 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io';
+
 class ProductService {
-final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-final FirebaseStorage _storage = FirebaseStorage.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
-Future<List<Map<String, dynamic>>> fetchProducts(String categoryId) async {
-try {
-final querySnapshot = await _firestore
-    .collection('products')
-    .where('categorization.category', isEqualTo: categoryId)
-    .where('status.isActive', isEqualTo: true)
-    .get();
-return querySnapshot.docs.map((doc) => {
-'id': doc.id,
-'name': doc.data()['basicInfo']['name'],
-'price': doc.data()['pricing']['price'],
-'image': doc.data()['media']['featuredImage'] ?? '',
-'quantity': doc.data()['inventory']['quantity'] ?? 0,
-'discount': doc.data()['discount']['percentage'] ?? 0,
-'description': doc.data()['basicInfo']['description'] ?? '',
-'categoryId': doc.data()['categorization']['category'],
-}).toList();
-} catch (e) {
-print('Error fetching products: $e');
-throw Exception('Failed to load products');
-}
-}
-
-// Added fetchCategories method
-Future<List<Map<String, dynamic>>> fetchCategories() async {
-try {
-final querySnapshot = await _firestore.collection('categories').get();
-return querySnapshot.docs.map((doc) => {
-'id': doc.id,
-'name': doc.data()['name'] ?? 'Unnamed Category',
-'description': doc.data()['description'] ?? '',
-'image': doc.data()['image'] ?? '',
-'isActive': doc.data()['isActive'] ?? true,
-}).toList();
-} catch (e) {
-print('Error fetching categories: $e');
-throw Exception('Failed to load categories');
-}
-}
-
-Future<List<Map<String, dynamic>>> fetchCarouselImages() async {
-try {
-final querySnapshot = await _firestore.collection('carousel_images').get();
-return querySnapshot.docs.map((doc) => {
-'id': doc.id,
-'imageUrl': doc.data()['imageUrl'],
-'isActive': doc.data()['isActive'] ?? true,
-}).toList();
-} catch (e) {
-print('Error fetching carousel images: $e');
-throw Exception('Failed to load carousel images');
-}
-}
-
-Future<String> _uploadImage(File image) async {
-try {
-String fileName = 'product_${DateTime.now().millisecondsSinceEpoch}.png';
-Reference storageRef = _storage.ref().child('images/$fileName');
-UploadTask uploadTask = storageRef.putFile(image);
-TaskSnapshot snapshot = await uploadTask;
-return await snapshot.ref.getDownloadURL();
-} catch (e) {
-print('Error uploading image: $e');
-throw Exception('Failed to upload image');
-}
-}
-
-  Future<void> addProduct(String categoryId, Map<String, dynamic> data, File? image) async {
+  Future<List<Map<String, dynamic>>> fetchProducts(String categoryId) async {
     try {
-      String imageUrl = image != null ? await _uploadImage(image) : '';
-      final now = DateTime.now();
+      final querySnapshot = await _firestore
+          .collection('products')
+          .where('categorization.category', isEqualTo: categoryId)
+          .where('status.isActive', isEqualTo: true)
+          .get();
 
-      await _firestore.collection('products').add({
-        'basicInfo': {
-          'name': data['name'],
-          'description': data['description'] ?? '',
-        },
-        'pricing': {'price': double.parse(data['price'])},
-        'media': {'featuredImage': imageUrl},
-        'categorization': {'category': categoryId},
-        'inventory': {'quantity': int.parse(data['quantity'])},
-        'discount': {'percentage': double.parse(data['discount'])},
-        'status': {'isActive': true},
-        'createdAt': now, // Use DateTime.now()
-        'updatedAt': now, // Use DateTime.now()
-      });
+      return querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'basicInfo': data['basicInfo'] ?? {
+            'name': data['name'] ?? 'Unknown Product',
+            'description': data['description'] ?? '',
+          },
+          'pricing': data['pricing'] ?? {
+            'price': data['price'] ?? 0.0,
+          },
+          'media': data['media'] ?? {
+            'featuredImage': data['image'] ?? '',
+          },
+          'categorization': data['categorization'] ?? {
+            'category': categoryId,
+          },
+          'inventory': data['inventory'] ?? {
+            'quantity': data['quantity'] ?? 0,
+            'trackQuantity': true,
+          },
+          'discount': data['discount'] ?? {
+            'percentage': data['discount'] ?? 0.0,
+          },
+          'details': data['details'] ?? {
+            'brand': '',
+            'type': '',
+            'ingredients': '',
+            'size': '',
+            'packaging': '',
+            'shelfLife': '',
+          },
+          'status': data['status'] ?? {
+            'isActive': true,
+          },
+          'createdAt': data['createdAt'],
+          'updatedAt': data['updatedAt'],
+
+          // Legacy fields for backward compatibility
+          'name': data['basicInfo']?['name'] ?? data['name'] ?? 'Unknown Product',
+          'price': data['pricing']?['price'] ?? data['price'] ?? 0.0,
+          'image': data['media']?['featuredImage'] ?? data['image'] ?? '',
+          'description': data['basicInfo']?['description'] ?? data['description'] ?? '',
+          'quantity': data['inventory']?['quantity'] ?? data['quantity'] ?? 0,
+          'discount': data['discount']?['percentage'] ?? data['discount'] ?? 0.0,
+        };
+      }).toList();
     } catch (e) {
-      print('Error adding product: $e');
-      throw Exception('Failed to add product');
+      throw Exception('Failed to fetch products: $e');
     }
   }
 
-  Future<void> updateProduct(String productId, Map<String, dynamic> data, File? image) async {
+  Future<Map<String, dynamic>?> fetchProductById(String productId) async {
     try {
-      String imageUrl = image != null
-          ? await _uploadImage(image)
-          : (await _firestore.collection('products').doc(productId).get()).data()?['media']['featuredImage'] ?? '';
+      final docSnapshot = await _firestore
+          .collection('products')
+          .doc(productId)
+          .get();
+
+      if (!docSnapshot.exists) {
+        return null;
+      }
+
+      final data = docSnapshot.data()!;
+      return {
+        'id': docSnapshot.id,
+        'basicInfo': data['basicInfo'] ?? {
+          'name': data['name'] ?? 'Unknown Product',
+          'description': data['description'] ?? '',
+        },
+        'pricing': data['pricing'] ?? {
+          'price': data['price'] ?? 0.0,
+        },
+        'media': data['media'] ?? {
+          'featuredImage': data['image'] ?? '',
+        },
+        'categorization': data['categorization'] ?? {},
+        'inventory': data['inventory'] ?? {
+          'quantity': data['quantity'] ?? 0,
+          'trackQuantity': true,
+        },
+        'discount': data['discount'] ?? {
+          'percentage': data['discount'] ?? 0.0,
+        },
+        'details': data['details'] ?? {
+          'brand': '',
+          'type': '',
+          'ingredients': '',
+          'size': '',
+          'packaging': '',
+          'shelfLife': '',
+        },
+        'status': data['status'] ?? {
+          'isActive': true,
+        },
+        'createdAt': data['createdAt'],
+        'updatedAt': data['updatedAt'],
+
+        // Legacy fields for backward compatibility
+        'name': data['basicInfo']?['name'] ?? data['name'] ?? 'Unknown Product',
+        'price': data['pricing']?['price'] ?? data['price'] ?? 0.0,
+        'image': data['media']?['featuredImage'] ?? data['image'] ?? '',
+        'description': data['basicInfo']?['description'] ?? data['description'] ?? '',
+        'quantity': data['inventory']?['quantity'] ?? data['quantity'] ?? 0,
+        'discount': data['discount']?['percentage'] ?? data['discount'] ?? 0.0,
+      };
+    } catch (e) {
+      throw Exception('Failed to fetch product: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> searchProducts(String query) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('products')
+          .where('status.isActive', isEqualTo: true)
+          .get();
+
+      final products = querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'basicInfo': data['basicInfo'] ?? {
+            'name': data['name'] ?? 'Unknown Product',
+            'description': data['description'] ?? '',
+          },
+          'pricing': data['pricing'] ?? {
+            'price': data['price'] ?? 0.0,
+          },
+          'media': data['media'] ?? {
+            'featuredImage': data['image'] ?? '',
+          },
+          'categorization': data['categorization'] ?? {},
+          'inventory': data['inventory'] ?? {
+            'quantity': data['quantity'] ?? 0,
+            'trackQuantity': true,
+          },
+          'discount': data['discount'] ?? {
+            'percentage': data['discount'] ?? 0.0,
+          },
+          'details': data['details'] ?? {
+            'brand': '',
+            'type': '',
+            'ingredients': '',
+            'size': '',
+            'packaging': '',
+            'shelfLife': '',
+          },
+          'status': data['status'] ?? {
+            'isActive': true,
+          },
+          'createdAt': data['createdAt'],
+          'updatedAt': data['updatedAt'],
+
+          // Legacy fields for backward compatibility
+          'name': data['basicInfo']?['name'] ?? data['name'] ?? 'Unknown Product',
+          'price': data['pricing']?['price'] ?? data['price'] ?? 0.0,
+          'image': data['media']?['featuredImage'] ?? data['image'] ?? '',
+          'description': data['basicInfo']?['description'] ?? data['description'] ?? '',
+          'quantity': data['inventory']?['quantity'] ?? data['quantity'] ?? 0,
+          'discount': data['discount']?['percentage'] ?? data['discount'] ?? 0.0,
+        };
+      }).toList();
+
+      // Filter products that match the search query
+      return products.where((product) {
+        final name = product['name']?.toString().toLowerCase() ?? '';
+        final description = product['description']?.toString().toLowerCase() ?? '';
+        final brand = product['details']?['brand']?.toString().toLowerCase() ?? '';
+        final searchTerm = query.toLowerCase();
+
+        return name.contains(searchTerm) ||
+            description.contains(searchTerm) ||
+            brand.contains(searchTerm);
+      }).toList();
+    } catch (e) {
+      throw Exception('Failed to search products: $e');
+    }
+  }
+
+  Future<String> addProduct(String categoryId, Map<String, dynamic> productData, File? imageFile) async {
+    try {
+      if (imageFile != null) {
+        // Upload image first, then add URL to productData
+        final imageUrl = await uploadImage('temp_${DateTime.now().millisecondsSinceEpoch}', imageFile);
+        productData['media'] = {'featuredImage': imageUrl};
+      }
+
+      productData['categorization'] = {'category': categoryId};
+
+      final docRef = await _firestore.collection('products').add({
+        ...productData,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Update image path with actual product ID if image was uploaded
+      if (imageFile != null) {
+        final actualImageUrl = await uploadImage(docRef.id, imageFile);
+        await docRef.update({'media.featuredImage': actualImageUrl});
+      }
+
+      return docRef.id;
+    } catch (e) {
+      throw Exception('Failed to add product: $e');
+    }
+  }
+
+  Future<void> updateProduct(String productId, Map<String, dynamic> updates, File? imageFile) async {
+    try {
+      if (imageFile != null) {
+        final imageUrl = await uploadImage(productId, imageFile);
+        updates['media'] = {'featuredImage': imageUrl};
+      }
 
       await _firestore.collection('products').doc(productId).update({
-        'basicInfo': {
-          'name': data['name'],
-          'description': data['description'] ?? '',
-        },
-        'pricing': {'price': double.parse(data['price'])},
-        'media': {'featuredImage': imageUrl},
-        'categorization': {'category': data['categoryId'] ?? (await _firestore.collection('products').doc(productId).get()).data()?['categorization']['category']},
-        'inventory': {'quantity': int.parse(data['quantity'])},
-        'discount': {'percentage': double.parse(data['discount'])},
-        'updatedAt': DateTime.now(), // Use DateTime.now()
+        ...updates,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('Error updating product: $e');
-      throw Exception('Failed to update product');
+      throw Exception('Failed to update product: $e');
     }
   }
 
-Future<void> deleteProduct(String productId) async {
-try {
-await _firestore.collection('products').doc(productId).delete();
-} catch (e) {
-print('Error deleting product: $e');
-throw Exception('Failed to delete product');
-}
-}
+  Future<void> deleteProduct(String productId) async {
+    try {
+      await _firestore.collection('products').doc(productId).delete();
+    } catch (e) {
+      throw Exception('Failed to delete product: $e');
+    }
+  }
+
+  Future<void> updateProductStatus(String productId, bool isActive) async {
+    try {
+      await _firestore.collection('products').doc(productId).update({
+        'status.isActive': isActive,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('Failed to update product status: $e');
+    }
+  }
+
+  Future<void> updateInventory(String productId, int quantity) async {
+    try {
+      await _firestore.collection('products').doc(productId).update({
+        'inventory.quantity': quantity,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('Failed to update inventory: $e');
+    }
+  }
+
+  Future<String> uploadImage(String productId, File imageFile) async {
+    try {
+      final ref = _storage.ref().child('products/$productId/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      final uploadTask = ref.putFile(imageFile);
+      final snapshot = await uploadTask;
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      return downloadUrl;
+    } catch (e) {
+      throw Exception('Failed to upload image: $e');
+    }
+  }
+  Future<List<Map<String, dynamic>>> fetchCarouselImages() async {
+    try {
+      final querySnapshot = await _firestore.collection('carouselImages').get();
+      return querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'imageUrl': data['imageUrl'] ?? data['image'] ?? '',
+        };
+      }).where((image) => image['imageUrl'].toString().isNotEmpty).toList();
+    } catch (e) {
+      throw Exception('Failed to fetch carousel images: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchCategories() async {
+    try {
+      final querySnapshot = await _firestore.collection('categories').get();
+      return querySnapshot.docs.map((doc) => {
+        'id': doc.id,
+        ...doc.data(),
+      }).toList();
+    } catch (e) {
+      throw Exception('Failed to fetch categories: $e');
+    }
+  }
+
+  Future<void> deleteImage(String imageUrl) async {
+    try {
+      final ref = _storage.refFromURL(imageUrl);
+      await ref.delete();
+    } catch (e) {
+      throw Exception('Failed to delete image: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getFeaturedProducts() async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('products')
+          .where('status.isActive', isEqualTo: true)
+          .where('status.isFeatured', isEqualTo: true)
+          .limit(10)
+          .get();
+
+      return querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'basicInfo': data['basicInfo'] ?? {
+            'name': data['name'] ?? 'Unknown Product',
+            'description': data['description'] ?? '',
+          },
+          'pricing': data['pricing'] ?? {
+            'price': data['price'] ?? 0.0,
+          },
+          'media': data['media'] ?? {
+            'featuredImage': data['image'] ?? '',
+          },
+          'categorization': data['categorization'] ?? {},
+          'inventory': data['inventory'] ?? {
+            'quantity': data['quantity'] ?? 0,
+            'trackQuantity': true,
+          },
+          'discount': data['discount'] ?? {
+            'percentage': data['discount'] ?? 0.0,
+          },
+          'details': data['details'] ?? {
+            'brand': '',
+            'type': '',
+            'ingredients': '',
+            'size': '',
+            'packaging': '',
+            'shelfLife': '',
+          },
+          'status': data['status'] ?? {
+            'isActive': true,
+          },
+          'createdAt': data['createdAt'],
+          'updatedAt': data['updatedAt'],
+
+          // Legacy fields for backward compatibility
+          'name': data['basicInfo']?['name'] ?? data['name'] ?? 'Unknown Product',
+          'price': data['pricing']?['price'] ?? data['price'] ?? 0.0,
+          'image': data['media']?['featuredImage'] ?? data['image'] ?? '',
+          'description': data['basicInfo']?['description'] ?? data['description'] ?? '',
+          'quantity': data['inventory']?['quantity'] ?? data['quantity'] ?? 0,
+          'discount': data['discount']?['percentage'] ?? data['discount'] ?? 0.0,
+        };
+      }).toList();
+    } catch (e) {
+      throw Exception('Failed to fetch featured products: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getProductsByPriceRange(double minPrice, double maxPrice) async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('products')
+          .where('status.isActive', isEqualTo: true)
+          .where('pricing.price', isGreaterThanOrEqualTo: minPrice)
+          .where('pricing.price', isLessThanOrEqualTo: maxPrice)
+          .get();
+
+      return querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'basicInfo': data['basicInfo'] ?? {
+            'name': data['name'] ?? 'Unknown Product',
+            'description': data['description'] ?? '',
+          },
+          'pricing': data['pricing'] ?? {
+            'price': data['price'] ?? 0.0,
+          },
+          'media': data['media'] ?? {
+            'featuredImage': data['image'] ?? '',
+          },
+          'categorization': data['categorization'] ?? {},
+          'inventory': data['inventory'] ?? {
+            'quantity': data['quantity'] ?? 0,
+            'trackQuantity': true,
+          },
+          'discount': data['discount'] ?? {
+            'percentage': data['discount'] ?? 0.0,
+          },
+          'details': data['details'] ?? {
+            'brand': '',
+            'type': '',
+            'ingredients': '',
+            'size': '',
+            'packaging': '',
+            'shelfLife': '',
+          },
+          'status': data['status'] ?? {
+            'isActive': true,
+          },
+          'createdAt': data['createdAt'],
+          'updatedAt': data['updatedAt'],
+
+          // Legacy fields for backward compatibility
+          'name': data['basicInfo']?['name'] ?? data['name'] ?? 'Unknown Product',
+          'price': data['pricing']?['price'] ?? data['price'] ?? 0.0,
+          'image': data['media']?['featuredImage'] ?? data['image'] ?? '',
+          'description': data['basicInfo']?['description'] ?? data['description'] ?? '',
+          'quantity': data['inventory']?['quantity'] ?? data['quantity'] ?? 0,
+          'discount': data['discount']?['percentage'] ?? data['discount'] ?? 0.0,
+        };
+      }).toList();
+    } catch (e) {
+      throw Exception('Failed to fetch products by price range: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getDiscountedProducts() async {
+    try {
+      final querySnapshot = await _firestore
+          .collection('products')
+          .where('status.isActive', isEqualTo: true)
+          .where('discount.percentage', isGreaterThan: 0)
+          .get();
+
+      return querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'basicInfo': data['basicInfo'] ?? {
+            'name': data['name'] ?? 'Unknown Product',
+            'description': data['description'] ?? '',
+          },
+          'pricing': data['pricing'] ?? {
+            'price': data['price'] ?? 0.0,
+          },
+          'media': data['media'] ?? {
+            'featuredImage': data['image'] ?? '',
+          },
+          'categorization': data['categorization'] ?? {},
+          'inventory': data['inventory'] ?? {
+            'quantity': data['quantity'] ?? 0,
+            'trackQuantity': true,
+          },
+          'discount': data['discount'] ?? {
+            'percentage': data['discount'] ?? 0.0,
+          },
+          'details': data['details'] ?? {
+            'brand': '',
+            'type': '',
+            'ingredients': '',
+            'size': '',
+            'packaging': '',
+            'shelfLife': '',
+          },
+          'status': data['status'] ?? {
+            'isActive': true,
+          },
+          'createdAt': data['createdAt'],
+          'updatedAt': data['updatedAt'],
+
+          // Legacy fields for backward compatibility
+          'name': data['basicInfo']?['name'] ?? data['name'] ?? 'Unknown Product',
+          'price': data['pricing']?['price'] ?? data['price'] ?? 0.0,
+          'image': data['media']?['featuredImage'] ?? data['image'] ?? '',
+          'description': data['basicInfo']?['description'] ?? data['description'] ?? '',
+          'quantity': data['inventory']?['quantity'] ?? data['quantity'] ?? 0,
+          'discount': data['discount']?['percentage'] ?? data['discount'] ?? 0.0,
+        };
+      }).toList();
+    } catch (e) {
+      throw Exception('Failed to fetch discounted products: $e');
+    }
+  }
 }

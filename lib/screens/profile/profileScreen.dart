@@ -1,16 +1,12 @@
-import 'package:bharghavi/screens/profile/savedAddressScreen.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-import '../../auth/login/logInScreen.dart';
-
-
-
-import '../policies/contactUsScreen.dart';
-import '../policies/privacyPolicyScreen.dart';
-import '../policies/termsAndConditionsScreen.dart';
-
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:bharghavi/screens/profile/savedAddressScreen.dart';
+import 'package:bharghavi/screens/profile/myOrdersScreen.dart'; // Added import
+import 'package:bharghavi/auth/login/logInScreen.dart';
+import 'package:bharghavi/screens/policies/contactUsScreen.dart';
+import 'package:bharghavi/screens/policies/privacyPolicyScreen.dart';
+import 'package:bharghavi/screens/policies/termsAndConditionsScreen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -88,6 +84,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => const SavedAddressScreen(),
+      ),
+    );
+  }
+
+  Future<void> _navigateToMyOrders() async {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const MyOrdersScreen(),
       ),
     );
   }
@@ -344,13 +349,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _buildProfileOption(
                       icon: Icons.shopping_bag_outlined,
                       title: 'My order',
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('My Orders screen to be implemented'),
-                          ),
-                        );
-                      },
+                      onTap: _navigateToMyOrders, // Updated to navigate to MyOrdersScreen
                     ),
                     _buildDivider(),
 
@@ -367,11 +366,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     _buildDivider(),
 
-                    // Updated Saved Address navigation
                     _buildProfileOption(
                       icon: Icons.location_on_outlined,
                       title: 'Saved Address',
-                      onTap: _navigateToSavedAddress, // Now properly navigates to saved address screen
+                      onTap: _navigateToSavedAddress,
                     ),
                     _buildDivider(),
 
@@ -478,7 +476,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-// Edit Profile Screen (unchanged)
+// Edit Profile Screen
 class EditProfileScreen extends StatefulWidget {
   final String currentUserName;
 
